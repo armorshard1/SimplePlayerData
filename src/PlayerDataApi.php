@@ -140,6 +140,8 @@ final class PlayerDataApi {
                     . "(uuid BLOB NOT NULL PRIMARY KEY, username TEXT COLLATE NOCASE NOT NULL, firstSeen INT NOT NULL, lastSeen INT NOT NULL)");
                 $db->run("CREATE TABLE IF NOT EXISTS UsernameData (username TEXT COLLATE NOCASE NOT NULL PRIMARY KEY, uuid BLOB NOT NULL)");
             }
+            $db->run("PRAGMA journal_mode=WAL");
+            $db->run("PRAGMA synchronous=NORMAL");
         } catch (SqliteException $e) {
             if ($db !== null) {
                 $db->close();
