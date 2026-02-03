@@ -1,0 +1,33 @@
+{
+    "name": "armorshard/simpleplayerdata",
+    "description": "Simple player data plugin for PocketMine-MP",
+    "version": "0.1.0",
+    "minimum-stability": "stable",
+    "require": {
+        "pocketmine/pocketmine-mp": "^5.0.0"
+    },
+    "require-dev": {
+        "sof3/pharynx": "^0.3.0",
+        "phpstan/phpstan": "^1.2.0",
+        "phpstan/extension-installer": "^1.1.0",
+        "phpstan/phpstan-strict-rules": "^1.1.0",
+        "friendsofphp/php-cs-fixer": "^3.0.0"
+    },
+    "license": "AGPL-3.0",
+    "autoload": {
+        "psr-4": {
+            "armorshard\\simpleplayerdata\\": "src"
+        }
+    },
+    "authors": [
+        {
+            "name": "armorshard",
+            "email": "182062526+armorshard@users.noreply.github.com"
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        }
+    }
+}
