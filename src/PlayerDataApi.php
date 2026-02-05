@@ -7,10 +7,24 @@ namespace armorshard\simpleplayerdata;
 use Exception;
 use InvalidArgumentException;
 use Logger;
-use Ramsey\Uuid\Uuid;
-use Ramsey\Uuid\UuidInterface;
 use pocketmine\event\EventPriority;
 use pocketmine\event\player\PlayerLoginEvent;
+use pocketmine\plugin\PluginBase;
+use Ramsey\Uuid\Uuid;
+use Ramsey\Uuid\UuidInterface;
+
+use function array_key_first;
+use function count;
+use function file_exists;
+use function is_int;
+use function is_string;
+use function time;
+
+use const SQLITE3_BLOB;
+use const SQLITE3_INTEGER;
+use const SQLITE3_OPEN_CREATE;
+use const SQLITE3_OPEN_READWRITE;
+use const SQLITE3_TEXT;
 
 final class PlayerDataApi {
     private Sqlite $db;
@@ -33,12 +47,12 @@ final class PlayerDataApi {
                 try {
                     $uuid = Uuid::fromBytes($row["uuid"]);
                 } catch (InvalidArgumentException $e) {
-                    throw new PlayerDataException("Uuid constructor: " . $e->getMessage(), previous: $e);
+                    throw new PlayerDataException("Uuid constructor: {$e->getMessage()}", previous: $e);
                 }
                 $o = $uuid;
             }
         } catch (SqliteException $e) {
-            throw new PlayerDataException("Sqlite exception: " . $e->getMessage(), previous: $e);
+            throw new PlayerDataException("Sqlite exception: {$e->getMessage()}", previous: $e);
         } finally {
             if (isset($stmt)) {
                 $stmt->close();
@@ -73,7 +87,7 @@ final class PlayerDataApi {
                 try {
                     $uuid = Uuid::fromBytes($row["uuid"]);
                 } catch (InvalidArgumentException $e) {
-                    throw new PlayerDataException("Uuid constructor: " . $e->getMessage(), previous: $e);
+                    throw new PlayerDataException("Uuid constructor: {$e->getMessage()}", previous: $e);
                 }
                 $o = new PlayerData($uuid, $row["username"], $row["firstSeen"], $row["lastSeen"]);
             }
@@ -111,7 +125,7 @@ final class PlayerDataApi {
             } catch (SqliteException $_ignored) {
             }
             $logger->critical("Cannot update players.db");
-            $logger->critical("username: {$ev->getPlayer()->getName()}, uuid: {$ev->getPlayer()->getUniqueId()->toString()}");
+            $logger->critical("username: {$ev->getPlayer()->getName()}, uuid: {$ev->getPlayer()->getUniqueId()}");
             $logger->logException($e);
         } finally {
             if (isset($stmt)) {
@@ -127,7 +141,7 @@ final class PlayerDataApi {
      * @internal
      * @throws Exception When opening the database fails
      */
-    public function __construct(Main $plugin) {
+    public function __construct(PluginBase $plugin) {
         $dbpath = "{$plugin->getDataFolder()}players.db";
 
         $db = null;

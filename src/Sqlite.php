@@ -8,6 +8,8 @@ use Exception;
 use SQLite3;
 use SQLite3Stmt;
 
+use const SQLITE3_ASSOC;
+
 /**
  * @internal
  */
@@ -18,7 +20,7 @@ final class Sqlite {
         try {
             $this->db = new SQLite3($dbpath, $flags);
         } catch (Exception $e) {
-            throw new SqliteException(previous: $e);
+            throw new SqliteException("Cannot open DB: {$e->getMessage()}", previous: $e);
         }
     }
 
@@ -38,7 +40,7 @@ final class Sqlite {
 
     public function bind(SQLite3Stmt $stmt, string $var, mixed $val, int $type): void {
         if (!$stmt->bindValue($var, $val, $type)) {
-            throw new SqliteException("Failed to bind `$var`");
+            throw new SqliteException("Failed to bind `$var` to statement: `{$stmt->getSQL()}`");
         }
     }
 
@@ -48,12 +50,12 @@ final class Sqlite {
     public function result(SQLite3Stmt $stmt): array {
         $result = $stmt->execute();
         if ($result === false) {
-            throw new SqliteException("Failed to execute");
+            throw new SqliteException("Failed to execute statement: `{$stmt->getSQL()}`");
         }
         $rows = $result->fetchArray(SQLITE3_ASSOC);
         $result->finalize();
         if ($rows === false) {
-            throw new SqliteException("Failed to fetch array");
+            throw new SqliteException("Failed to fetch array from result of statement: `{$stmt->getSQL()}`");
         }
         return $rows;
     }
@@ -61,7 +63,7 @@ final class Sqlite {
     public function execute(SQLite3Stmt $stmt): void {
         $result = $stmt->execute();
         if ($result === false) {
-            throw new SqliteException("Failed to execute");
+            throw new SqliteException("Failed to execute statement: `{$stmt->getSQL()}`");
         }
     }
 
