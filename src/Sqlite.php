@@ -52,11 +52,11 @@ final class Sqlite {
         if ($result === false) {
             throw new SqliteException("Failed to execute statement: `{$stmt->getSQL()}`");
         }
-        $rows = $result->fetchArray(SQLITE3_ASSOC);
-        $result->finalize();
-        if ($rows === false) {
-            throw new SqliteException("Failed to fetch array from result of statement: `{$stmt->getSQL()}`");
+        $rows = [];
+        while (($row = $result->fetchArray(SQLITE3_ASSOC)) !==  false) {
+            $rows[] = $row;
         }
+        $result->finalize();
         return $rows;
     }
 
