@@ -1,7 +1,7 @@
 {
     "name": "armorshard/simpleplayerdata",
     "description": "Simple player data plugin for PocketMine-MP",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "minimum-stability": "stable",
     "require": {
         "pocketmine/pocketmine-mp": "^5.0.0"
