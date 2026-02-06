@@ -13,8 +13,12 @@ final class Main extends PluginBase {
         return $this->api;
     }
 
-    protected function onEnable(): void {
+    protected function onLoad(): void {
         $this->api = new PlayerDataApi($this);
+    }
+
+    protected function onEnable(): void {
+        $this->api->registerEvents($this);
     }
 
     protected function onDisable(): void {

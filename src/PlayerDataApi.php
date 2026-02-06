@@ -163,7 +163,12 @@ final class PlayerDataApi {
             throw $e;
         }
         $this->db = $db;
+    }
 
+    /**
+     * @internal
+     */
+    public function registerEvents(PluginBase $plugin): void {
         $plugin->getServer()->getPluginManager()->registerEvent(PlayerLoginEvent::class, fn($e) => $this->handleLogin($plugin->getLogger(), $e), EventPriority::MONITOR, $plugin);
     }
 

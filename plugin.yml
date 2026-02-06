@@ -4,3 +4,4 @@ author: "armorshard"
 version: "1.0.0"
 description: "Save basic player data in a database"
 api: "5.0.0"
+load: STARTUP
