@@ -1,7 +1,7 @@
 name: SimplePlayerData
 main: armorshard\simpleplayerdata\Main
 author: "armorshard"
-version: "1.0.0"
+version: "1.0.1"
 description: "Save basic player data in a database"
 api: "5.0.0"
 load: STARTUP
