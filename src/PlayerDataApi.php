@@ -12,6 +12,7 @@ use pocketmine\event\player\PlayerLoginEvent;
 use pocketmine\plugin\PluginBase;
 use Ramsey\Uuid\Uuid;
 use Ramsey\Uuid\UuidInterface;
+use SQLite3Stmt;
 
 use function array_key_first;
 use function count;
@@ -28,15 +29,19 @@ use const SQLITE3_TEXT;
 
 final class PlayerDataApi {
     private Sqlite $db;
+    private SQLite3Stmt $selectUuidStmt;
+    private SQLite3Stmt $selectDataStmt;
+    private SQLite3Stmt $insertPlayerDataStmt;
+    private SQLite3Stmt $insertUsernameDataStmt;
 
     /**
      * @throws PlayerDataException When database operations fail
      */
     public function getUuid(string $username): ?UuidInterface {
         try {
-            $stmt = $this->db->prepare("SELECT uuid FROM UsernameData WHERE username = :username");
-            $this->db->bind($stmt, ":username", $username, SQLITE3_TEXT);
-            $rows = $this->db->result($stmt);
+            $this->selectUuidStmt->reset();
+            $this->db->bind($this->selectUuidStmt, ":username", $username, SQLITE3_TEXT);
+            $rows = $this->db->result($this->selectUuidStmt);
             if (count($rows) === 0) {
                 $o = null;
             } else {
@@ -53,10 +58,6 @@ final class PlayerDataApi {
             }
         } catch (SqliteException $e) {
             throw new PlayerDataException("Sqlite exception: {$e->getMessage()}", previous: $e);
-        } finally {
-            if (isset($stmt)) {
-                $stmt->close();
-            }
         }
         return $o;
     }
@@ -74,9 +75,9 @@ final class PlayerDataApi {
             $uuid = $id->getBytes();
         }
         try {
-            $stmt = $this->db->prepare("SELECT * FROM PlayerData WHERE uuid = :uuid");
-            $this->db->bind($stmt, ":uuid", $uuid, SQLITE3_BLOB);
-            $rows = $this->db->result($stmt);
+            $this->selectDataStmt->reset();
+            $this->db->bind($this->selectDataStmt, ":uuid", $uuid, SQLITE3_BLOB);
+            $rows = $this->db->result($this->selectDataStmt);
             if (count($rows) === 0) {
                 $o = null;
             } else {
@@ -93,10 +94,6 @@ final class PlayerDataApi {
             }
         } catch (SqliteException $e) {
             throw new PlayerDataException("Sqlite exception: " . $e->getMessage(), previous: $e);
-        } finally {
-            if (isset($stmt)) {
-                $stmt->close();
-            }
         }
         return $o;
     }
@@ -104,8 +101,9 @@ final class PlayerDataApi {
     private function handleLogin(Logger $logger, PlayerLoginEvent $ev): void {
         try {
             $this->db->run("BEGIN;");
-            $stmt = $this->db->prepare("INSERT INTO PlayerData VALUES (:uuid, :username, :firstSeen, :lastSeen) "
-                . "ON CONFLICT(uuid) DO UPDATE SET username = :username, lastSeen = :lastSeen");
+
+            $stmt = $this->insertPlayerDataStmt;
+            $stmt->reset();
             $this->db->bind($stmt, ":uuid", $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
             $this->db->bind($stmt, ":username", $ev->getPlayer()->getName(), SQLITE3_TEXT);
             $t = time();
@@ -113,11 +111,12 @@ final class PlayerDataApi {
             $this->db->bind($stmt, ":lastSeen", $t, SQLITE3_INTEGER);
             $this->db->execute($stmt);
 
-            $stmt2 = $this->db->prepare("INSERT INTO UsernameData VALUES (:username, :uuid) "
-                . "ON CONFLICT(username) DO UPDATE SET uuid = :uuid");
+            $stmt2 = $this->insertUsernameDataStmt;
+            $stmt2->reset();
             $this->db->bind($stmt2, ":username", $ev->getPlayer()->getName(), SQLITE3_TEXT);
             $this->db->bind($stmt2, ":uuid", $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
             $this->db->execute($stmt2);
+
             $this->db->run("COMMIT;");
         } catch (SqliteException $e) {
             try {
@@ -127,13 +126,6 @@ final class PlayerDataApi {
             $logger->critical("Cannot update players.db");
             $logger->critical("username: {$ev->getPlayer()->getName()}, uuid: {$ev->getPlayer()->getUniqueId()}");
             $logger->logException($e);
-        } finally {
-            if (isset($stmt)) {
-                $stmt->close();
-            }
-            if (isset($stmt2)) {
-                $stmt2->close();
-            }
         }
     }
 
@@ -156,6 +148,13 @@ final class PlayerDataApi {
             }
             $db->run("PRAGMA journal_mode=WAL");
             $db->run("PRAGMA synchronous=NORMAL");
+
+            $this->selectUuidStmt = $db->prepare("SELECT uuid FROM UsernameData WHERE username = :username");
+            $this->selectDataStmt = $db->prepare("SELECT * FROM PlayerData WHERE uuid = :uuid");
+            $this->insertPlayerDataStmt = $db->prepare("INSERT INTO PlayerData VALUES (:uuid, :username, :firstSeen, :lastSeen) "
+                . "ON CONFLICT(uuid) DO UPDATE SET username = :username, lastSeen = :lastSeen");
+            $this->insertUsernameDataStmt = $db->prepare("INSERT INTO UsernameData VALUES (:username, :uuid) "
+                . "ON CONFLICT(username) DO UPDATE SET uuid = :uuid");
         } catch (SqliteException $e) {
             if ($db !== null) {
                 $db->close();
@@ -176,8 +175,6 @@ final class PlayerDataApi {
      * @internal
      */
     public function close(): void {
-        if (isset($this->db)) {
-            $this->db->close();
-        }
+        $this->db->close();
     }
 }

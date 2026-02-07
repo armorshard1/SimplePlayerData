@@ -44,6 +44,12 @@ final class Sqlite {
         }
     }
 
+    public function reset(SQLite3Stmt $stmt): void {
+        if (!$stmt->reset()) {
+            throw new SqliteException("Failed to reset statement: `{$stmt->getSQL()}`");
+        }
+    }
+
     /**
      * @return array<array<mixed>>
      */
@@ -68,8 +74,6 @@ final class Sqlite {
     }
 
     public function close(): void {
-        if (isset($this->db)) {
-            $this->db->close();
-        }
+        $this->db->close();
     }
 }
