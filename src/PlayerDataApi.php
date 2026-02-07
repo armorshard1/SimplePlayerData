@@ -27,7 +27,7 @@ use const SQLITE3_OPEN_CREATE;
 use const SQLITE3_OPEN_READWRITE;
 use const SQLITE3_TEXT;
 
-final class PlayerDataApi {
+final readonly class PlayerDataApi {
     private Sqlite $db;
     private SQLite3Stmt $selectUuidStmt;
     private SQLite3Stmt $selectDataStmt;
