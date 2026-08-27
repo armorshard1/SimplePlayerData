@@ -4,21 +4,25 @@ declare(strict_types=1);
 
 namespace armorshard\simpleplayerdata;
 
+use armorshard\tsarray\TsArray;
 use Exception;
 use InvalidArgumentException;
 use Logger;
+use OutOfBoundsException;
 use pocketmine\event\EventPriority;
 use pocketmine\event\player\PlayerLoginEvent;
 use pocketmine\plugin\PluginBase;
 use Ramsey\Uuid\Uuid;
 use Ramsey\Uuid\UuidInterface;
 use SQLite3Stmt;
+use Throwable;
+use UnexpectedValueException;
 
 use function array_key_first;
 use function count;
 use function file_exists;
-use function is_int;
 use function is_string;
+use function sprintf;
 use function time;
 
 use const SQLITE3_BLOB;
@@ -35,97 +39,98 @@ final readonly class PlayerDataApi {
     private SQLite3Stmt $insertUsernameDataStmt;
 
     /**
-     * @throws PlayerDataException When database operations fail
+     * Get the UUID last associated with the given username.
+     * @return ?UuidInterface The UUID or null if not found.
+     * @throws PlayerDataException When database operations fail.
      */
     public function getUuid(string $username): ?UuidInterface {
         try {
             $this->selectUuidStmt->reset();
-            $this->db->bind($this->selectUuidStmt, ":username", $username, SQLITE3_TEXT);
+            $this->db->bind($this->selectUuidStmt, ':username', $username, SQLITE3_TEXT);
             $rows = $this->db->result($this->selectUuidStmt);
             if (count($rows) === 0) {
-                $o = null;
-            } else {
-                $row = $rows[array_key_first($rows)];
-                if (!is_string($row["uuid"] ?? null)) {
-                    throw new PlayerDataException("uuid column is malformed: `$row[uuid]`");
-                }
-                try {
-                    $uuid = Uuid::fromBytes($row["uuid"]);
-                } catch (InvalidArgumentException $e) {
-                    throw new PlayerDataException("Uuid constructor: {$e->getMessage()}", previous: $e);
-                }
-                $o = $uuid;
+                return null;
             }
-        } catch (SqliteException $e) {
-            throw new PlayerDataException("Sqlite exception: {$e->getMessage()}", previous: $e);
+            $row = $rows[array_key_first($rows)];
+            return Uuid::fromBytes(TsArray::getString($row, 'uuid'));
+        } catch (SqliteException|OutOfBoundsException|UnexpectedValueException|InvalidArgumentException $e) {
+            throw new PlayerDataException(
+                sprintf('Failed to retrieve UUID for "%s": %s', $username, $e->getMessage()),
+                previous: $e,
+            );
         }
-        return $o;
     }
 
     /**
-     * @throws PlayerDataException When database operations fail
+     * Get saved player data.
+     * @param UuidInterface|string $uuidOrUsername The UUID or username of the player.
+     * @throws PlayerDataException When database operations fail.
      */
-    public function getPlayerData(UuidInterface|string $id): ?PlayerData {
-        if (is_string($id)) {
-            $uuid = $this->getUuid($id)?->getBytes();
+    public function getPlayerData(UuidInterface|string $uuidOrUsername): ?PlayerData {
+        if (is_string($uuidOrUsername)) {
+            //username
+            $uuid = $this->getUuid($uuidOrUsername)?->getBytes();
             if ($uuid === null) {
                 return null;
             }
         } else {
-            $uuid = $id->getBytes();
+            //uuid
+            $uuid = $uuidOrUsername->getBytes();
         }
         try {
             $this->selectDataStmt->reset();
-            $this->db->bind($this->selectDataStmt, ":uuid", $uuid, SQLITE3_BLOB);
+            $this->db->bind($this->selectDataStmt, ':uuid', $uuid, SQLITE3_BLOB);
             $rows = $this->db->result($this->selectDataStmt);
             if (count($rows) === 0) {
-                $o = null;
-            } else {
-                $row = $rows[array_key_first($rows)];
-                if (!is_string($row["uuid"] ?? null) || !is_string($row["username"] ?? null) || !is_int($row["firstSeen"] ?? null) || !is_int($row["lastSeen"] ?? null)) {
-                    throw new PlayerDataException("Malformed columns: `$row[uuid]` `$row[username]` `$row[firstSeen]` `$row[lastseen]`");
-                }
-                try {
-                    $uuid = Uuid::fromBytes($row["uuid"]);
-                } catch (InvalidArgumentException $e) {
-                    throw new PlayerDataException("Uuid constructor: {$e->getMessage()}", previous: $e);
-                }
-                $o = new PlayerData($uuid, $row["username"], $row["firstSeen"], $row["lastSeen"]);
+                return null;
             }
-        } catch (SqliteException $e) {
-            throw new PlayerDataException("Sqlite exception: " . $e->getMessage(), previous: $e);
+            $row = $rows[array_key_first($rows)];
+            return new PlayerData(
+                Uuid::fromBytes(TsArray::getString($row, 'uuid')),
+                TsArray::getString($row, 'username'),
+                TsArray::getInt($row, 'firstSeen'),
+                TsArray::getInt($row, 'lastSeen'),
+            );
+        } catch (SqliteException|OutOfBoundsException|UnexpectedValueException|InvalidArgumentException $e) {
+            throw new PlayerDataException(
+                sprintf('Failed to get player data for %s: %s', (string) $uuidOrUsername, $e->getMessage()),
+                previous: $e,
+            );
         }
-        return $o;
     }
 
-    private function handleLogin(Logger $logger, PlayerLoginEvent $ev): void {
+    private function handleLogin(PlayerLoginEvent $ev): void {
         try {
-            $this->db->run("BEGIN;");
+            $this->db->run('BEGIN;');
 
             $stmt = $this->insertPlayerDataStmt;
             $stmt->reset();
-            $this->db->bind($stmt, ":uuid", $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
-            $this->db->bind($stmt, ":username", $ev->getPlayer()->getName(), SQLITE3_TEXT);
+            $this->db->bind($stmt, ':uuid', $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
+            $this->db->bind($stmt, ':username', $ev->getPlayer()->getName(), SQLITE3_TEXT);
             $t = time();
-            $this->db->bind($stmt, ":firstSeen", $t, SQLITE3_INTEGER);
-            $this->db->bind($stmt, ":lastSeen", $t, SQLITE3_INTEGER);
+            $this->db->bind($stmt, ':firstSeen', $t, SQLITE3_INTEGER);
+            $this->db->bind($stmt, ':lastSeen', $t, SQLITE3_INTEGER);
             $this->db->execute($stmt);
 
             $stmt2 = $this->insertUsernameDataStmt;
             $stmt2->reset();
-            $this->db->bind($stmt2, ":username", $ev->getPlayer()->getName(), SQLITE3_TEXT);
-            $this->db->bind($stmt2, ":uuid", $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
+            $this->db->bind($stmt2, ':username', $ev->getPlayer()->getName(), SQLITE3_TEXT);
+            $this->db->bind($stmt2, ':uuid', $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
             $this->db->execute($stmt2);
 
-            $this->db->run("COMMIT;");
+            $this->db->run('COMMIT;');
         } catch (SqliteException $e) {
             try {
-                $this->db->run("ROLLBACK;");
-            } catch (SqliteException $_ignored) {
+                $this->db->run('ROLLBACK;');
+            } catch (SqliteException $_ignored) { //@mago-expect lint:no-empty-catch-clause
             }
-            $logger->critical("Cannot update players.db");
-            $logger->critical("username: {$ev->getPlayer()->getName()}, uuid: {$ev->getPlayer()->getUniqueId()}");
-            $logger->logException($e);
+            $this->logger->critical(sprintf(
+                'Cannot update players.db (username=%s uuid=%s): %s',
+                $ev->getPlayer()->getName(),
+                $ev->getPlayer()->getUniqueId()->toString(),
+                $e->getMessage(),
+            ));
+            $this->logger->logException($e);
         }
     }
 
@@ -133,42 +138,52 @@ final readonly class PlayerDataApi {
      * @internal
      * @throws Exception When opening the database fails
      */
-    public function __construct(PluginBase $plugin) {
-        $dbpath = "{$plugin->getDataFolder()}players.db";
-
-        $db = null;
+    public function __construct(
+        string $dbpath,
+        private Logger $logger,
+    ) {
         try {
+            $db = null;
             if (file_exists($dbpath)) {
                 $db = new Sqlite($dbpath, SQLITE3_OPEN_READWRITE);
             } else {
                 $db = new Sqlite($dbpath, SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE);
-                $db->run("CREATE TABLE IF NOT EXISTS PlayerData "
-                    . "(uuid BLOB NOT NULL PRIMARY KEY, username TEXT COLLATE NOCASE NOT NULL, firstSeen INT NOT NULL, lastSeen INT NOT NULL)");
-                $db->run("CREATE TABLE IF NOT EXISTS UsernameData (username TEXT COLLATE NOCASE NOT NULL PRIMARY KEY, uuid BLOB NOT NULL)");
+                $db->run(
+                    'CREATE TABLE IF NOT EXISTS PlayerData '
+                    . '(uuid BLOB NOT NULL PRIMARY KEY, username TEXT COLLATE NOCASE NOT NULL, firstSeen INT NOT NULL, lastSeen INT NOT NULL)',
+                );
+                $db->run(
+                    'CREATE TABLE IF NOT EXISTS UsernameData (username TEXT COLLATE NOCASE NOT NULL PRIMARY KEY, uuid BLOB NOT NULL)',
+                );
             }
-            $db->run("PRAGMA journal_mode=WAL");
-            $db->run("PRAGMA synchronous=NORMAL");
+            $db->run('PRAGMA journal_mode=WAL');
+            $db->run('PRAGMA synchronous=NORMAL');
 
-            $this->selectUuidStmt = $db->prepare("SELECT uuid FROM UsernameData WHERE username = :username");
-            $this->selectDataStmt = $db->prepare("SELECT * FROM PlayerData WHERE uuid = :uuid");
-            $this->insertPlayerDataStmt = $db->prepare("INSERT INTO PlayerData VALUES (:uuid, :username, :firstSeen, :lastSeen) "
-                . "ON CONFLICT(uuid) DO UPDATE SET username = :username, lastSeen = :lastSeen");
-            $this->insertUsernameDataStmt = $db->prepare("INSERT INTO UsernameData VALUES (:username, :uuid) "
-                . "ON CONFLICT(username) DO UPDATE SET uuid = :uuid");
-        } catch (SqliteException $e) {
+            $this->selectUuidStmt = $db->prepare('SELECT uuid FROM UsernameData WHERE username = :username');
+            $this->selectDataStmt = $db->prepare('SELECT * FROM PlayerData WHERE uuid = :uuid');
+            $this->insertPlayerDataStmt = $db->prepare(
+                'INSERT INTO PlayerData VALUES (:uuid, :username, :firstSeen, :lastSeen) '
+                . 'ON CONFLICT(uuid) DO UPDATE SET username = :username, lastSeen = :lastSeen',
+            );
+            $this->insertUsernameDataStmt = $db->prepare('INSERT INTO UsernameData VALUES (:username, :uuid) '
+            . 'ON CONFLICT(username) DO UPDATE SET uuid = :uuid');
+            $this->db = $db;
+        } catch (Throwable $e) {
             if ($db !== null) {
                 $db->close();
             }
             throw $e;
         }
-        $this->db = $db;
     }
 
     /**
      * @internal
      */
     public function registerEvents(PluginBase $plugin): void {
-        $plugin->getServer()->getPluginManager()->registerEvent(PlayerLoginEvent::class, fn($e) => $this->handleLogin($plugin->getLogger(), $e), EventPriority::MONITOR, $plugin);
+        $plugin
+            ->getServer()
+            ->getPluginManager()
+            ->registerEvent(PlayerLoginEvent::class, $this->handleLogin(...), EventPriority::MONITOR, $plugin);
     }
 
     /**

@@ -8,6 +8,8 @@ use Exception;
 use SQLite3;
 use SQLite3Stmt;
 
+use function sprintf;
+
 use const SQLITE3_ASSOC;
 
 /**
@@ -20,7 +22,7 @@ final class Sqlite {
         try {
             $this->db = new SQLite3($dbpath, $flags);
         } catch (Exception $e) {
-            throw new SqliteException("Cannot open DB: {$e->getMessage()}", previous: $e);
+            throw new SqliteException(sprintf('Failed to load database %s: %s', $dbpath, $e->getMessage()), 0, $e);
         }
     }
 
@@ -33,20 +35,25 @@ final class Sqlite {
     public function prepare(string $query): SQLite3Stmt {
         $stmt = $this->db->prepare($query);
         if ($stmt === false) {
-            throw new SqliteException("Failed to prepare `$query`");
+            throw new SqliteException(sprintf('Failed to prepare query "%s": %s', $query, $this->err()));
         }
         return $stmt;
     }
 
     public function bind(SQLite3Stmt $stmt, string $var, mixed $val, int $type): void {
         if (!$stmt->bindValue($var, $val, $type)) {
-            throw new SqliteException("Failed to bind `$var` to statement: `{$stmt->getSQL()}`");
+            throw new SqliteException(sprintf(
+                'Failed to bind "%s" to statement "%s": %s',
+                $var,
+                $stmt->getSQL(),
+                $this->err(),
+            ));
         }
     }
 
     public function reset(SQLite3Stmt $stmt): void {
         if (!$stmt->reset()) {
-            throw new SqliteException("Failed to reset statement: `{$stmt->getSQL()}`");
+            throw new SqliteException(sprintf('Failed to reset statement "%s": %s', $stmt->getSQL(), $this->err()));
         }
     }
 
@@ -56,10 +63,10 @@ final class Sqlite {
     public function result(SQLite3Stmt $stmt): array {
         $result = $stmt->execute();
         if ($result === false) {
-            throw new SqliteException("Failed to execute statement: `{$stmt->getSQL()}`");
+            throw new SqliteException(sprintf('Failed to execute statement "%s": %s', $stmt->getSQL(), $this->err()));
         }
         $rows = [];
-        while (($row = $result->fetchArray(SQLITE3_ASSOC)) !==  false) {
+        while (($row = $result->fetchArray(SQLITE3_ASSOC)) !== false) {
             $rows[] = $row;
         }
         $result->finalize();
@@ -69,8 +76,13 @@ final class Sqlite {
     public function execute(SQLite3Stmt $stmt): void {
         $result = $stmt->execute();
         if ($result === false) {
-            throw new SqliteException("Failed to execute statement: `{$stmt->getSQL()}`");
+            throw new SqliteException(sprintf('Failed to execute statement "%s": %s', $stmt->getSQL(), $this->err()));
         }
+        $result->finalize();
+    }
+
+    private function err(): string {
+        return $this->db->lastErrorMsg();
     }
 
     public function close(): void {
