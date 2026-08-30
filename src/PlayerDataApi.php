@@ -99,41 +99,6 @@ final readonly class PlayerDataApi {
         }
     }
 
-    private function handleLogin(PlayerLoginEvent $ev): void {
-        try {
-            $this->db->run('BEGIN;');
-
-            $stmt = $this->insertPlayerDataStmt;
-            $stmt->reset();
-            $this->db->bind($stmt, ':uuid', $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
-            $this->db->bind($stmt, ':username', $ev->getPlayer()->getName(), SQLITE3_TEXT);
-            $t = time();
-            $this->db->bind($stmt, ':firstSeen', $t, SQLITE3_INTEGER);
-            $this->db->bind($stmt, ':lastSeen', $t, SQLITE3_INTEGER);
-            $this->db->execute($stmt);
-
-            $stmt2 = $this->insertUsernameDataStmt;
-            $stmt2->reset();
-            $this->db->bind($stmt2, ':username', $ev->getPlayer()->getName(), SQLITE3_TEXT);
-            $this->db->bind($stmt2, ':uuid', $ev->getPlayer()->getUniqueId()->getBytes(), SQLITE3_BLOB);
-            $this->db->execute($stmt2);
-
-            $this->db->run('COMMIT;');
-        } catch (SqliteException $e) {
-            try {
-                $this->db->run('ROLLBACK;');
-            } catch (SqliteException $_ignored) { //@mago-expect lint:no-empty-catch-clause
-            }
-            $this->logger->critical(sprintf(
-                'Cannot update players.db (username=%s uuid=%s): %s',
-                $ev->getPlayer()->getName(),
-                $ev->getPlayer()->getUniqueId()->toString(),
-                $e->getMessage(),
-            ));
-            $this->logger->logException($e);
-        }
-    }
-
     /**
      * @internal
      * @throws Exception When opening the database fails
@@ -184,6 +149,45 @@ final readonly class PlayerDataApi {
             ->getServer()
             ->getPluginManager()
             ->registerEvent(PlayerLoginEvent::class, $this->handleLogin(...), EventPriority::MONITOR, $plugin);
+    }
+
+    private function handleLogin(PlayerLoginEvent $ev): void {
+        $this->updatePlayerData($ev->getPlayer()->getUniqueId(), $ev->getPlayer()->getName(), time());
+    }
+
+    /**
+     * @throws SqliteException
+     */
+    private function updatePlayerData(UuidInterface $uuid, string $username, int $time): void {
+        try {
+            $this->db->run('BEGIN;');
+            $stmt = $this->insertPlayerDataStmt;
+            $stmt->reset();
+            $this->db->bind($stmt, ':uuid', $uuid->getBytes(), SQLITE3_BLOB);
+            $this->db->bind($stmt, ':username', $username, SQLITE3_TEXT);
+            $this->db->bind($stmt, ':firstSeen', $time, SQLITE3_INTEGER);
+            $this->db->bind($stmt, ':lastSeen', $time, SQLITE3_INTEGER);
+            $this->db->execute($stmt);
+
+            $stmt2 = $this->insertUsernameDataStmt;
+            $stmt2->reset();
+            $this->db->bind($stmt2, ':username', $username, SQLITE3_TEXT);
+            $this->db->bind($stmt2, ':uuid', $uuid->getBytes(), SQLITE3_BLOB);
+            $this->db->execute($stmt2);
+            $this->db->run('COMMIT;');
+        } catch (SqliteException $e) {
+            try {
+                $this->db->run('ROLLBACK;');
+            } catch (SqliteException $_ignored) { //@mago-expect lint:no-empty-catch-clause
+            }
+            $this->logger->critical(sprintf(
+                'Cannot update players.db (username=%s uuid=%s): %s',
+                $username,
+                $uuid->toString(),
+                $e->getMessage(),
+            ));
+            $this->logger->logException($e);
+        }
     }
 
     /**
