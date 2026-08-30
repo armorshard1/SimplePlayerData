@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f2cc375d3dcd77dc94c69068ce2a4003",
+    "content-hash": "a96daf96fd0c3b52eca258517f27e4f5",
     "packages": [
         {
             "name": "armorshard/tsarray",
